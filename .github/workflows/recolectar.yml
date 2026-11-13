@@ -1,11 +1,12 @@
 name: Recolectar subastas
 
-# Cada ejecución dura unas cinco horas y media: pregunta a Blizzard cada 15 minutos,
-# guarda lo nuevo y, al terminar, lanza ella misma la siguiente. El horario de abajo
-# solo es un vigilante que vuelve a arrancar la cadena si alguna vez se rompe.
+# Una recogida cada tres horas, sin depender del horario de GitHub: cada ejecución
+# espera 170 minutos (entorno «espera», sin ocupar ninguna máquina), recoge en medio
+# minuto y lanza la siguiente. El horario de abajo solo vuelve a arrancar la cadena
+# si alguna vez se rompe.
 on:
   schedule:
-    - cron: '4,34 * * * *'
+    - cron: '34 */3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +20,8 @@ concurrency:
 jobs:
   recolectar:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    environment: espera
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -27,43 +29,45 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Recuperar el libro de la hora anterior
+      - name: Recuperar el libro de la recogida anterior
         uses: actions/cache/restore@v4
         with:
           path: estado
           key: libro-${{ github.run_id }}
           restore-keys: libro-
 
-      - name: Recoger cada 15 minutos
+      - name: Traer los datos ya guardados
+        run: |
+          git clone --depth 1 --branch data https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git datos || mkdir datos
+          rm -rf datos/.git
+
+      - name: Descargar las casas de subastas
         env:
           BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
           BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
           WOWECON_REGION: ${{ vars.WOWECON_REGION || 'eu' }}
           WOWECON_HOUSES: ${{ vars.WOWECON_HOUSES || '110 116' }}
           WOWECON_KEEP_DAYS: ${{ vars.WOWECON_KEEP_DAYS || '21' }}
-          DESTINO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
-        run: |
-          fin=$(( $(date +%s) + 19800 ))
-          git clone -q --depth 1 --branch data "$DESTINO" datos || mkdir -p datos
-          rm -rf datos/.git
-          while true; do
-            python recolectar.py datos estado | tee salida.txt || true
-            if grep -q -e '-> nuevo' salida.txt; then
-              ( cd datos && git init -q -b data && git config user.name wowecon && git config user.email wowecon@users.noreply.github.com && git add -A && git commit -q -m "datos-$(date -u +%Y%m%dT%H%MZ)" && git push -q -f "$DESTINO" data ) || echo "No se pudo subir; se reintenta con el siguiente snapshot."
-              rm -rf datos/.git
-            fi
-            if [ "$(date +%s)" -ge "$fin" ]; then break; fi
-            sleep 900
-          done
+        run: python recolectar.py datos estado
 
-      - name: Guardar el libro para el relevo
+      - name: Guardar los datos en la rama data
+        run: |
+          cd datos
+          git init -q -b data
+          git config user.name wowecon
+          git config user.email wowecon@users.noreply.github.com
+          git add -A
+          git commit -q -m datos-$(date -u +%Y%m%dT%H%MZ)
+          git push -q -f https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git data
+
+      - name: Guardar el libro para la recogida siguiente
         if: always()
         uses: actions/cache/save@v4
         with:
           path: estado
           key: libro-${{ github.run_id }}
 
-      - name: Lanzar el relevo
+      - name: Lanzar la recogida siguiente
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
