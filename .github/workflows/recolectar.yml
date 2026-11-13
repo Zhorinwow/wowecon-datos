@@ -1,0 +1,62 @@
+name: Recolectar subastas
+
+on:
+  schedule:
+    - cron: '34 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recolectar
+  cancel-in-progress: false
+
+jobs:
+  recolectar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Recuperar el libro de la hora anterior
+        uses: actions/cache/restore@v4
+        with:
+          path: estado
+          key: libro-${{ github.run_id }}
+          restore-keys: libro-
+
+      - name: Traer los datos ya guardados
+        run: |
+          git clone --depth 1 --branch data https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git datos || mkdir datos
+          rm -rf datos/.git
+
+      - name: Descargar las casas de subastas
+        env:
+          BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
+          BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
+          WOWECON_REGION: ${{ vars.WOWECON_REGION || 'eu' }}
+          WOWECON_HOUSES: ${{ vars.WOWECON_HOUSES || '110 116' }}
+          WOWECON_KEEP_DAYS: ${{ vars.WOWECON_KEEP_DAYS || '21' }}
+        run: python recolectar.py datos estado
+
+      - name: Guardar los datos en la rama data
+        run: |
+          cd datos
+          git init -q -b data
+          git config user.name wowecon
+          git config user.email wowecon@users.noreply.github.com
+          git add -A
+          git commit -q -m datos-$(date -u +%Y%m%dT%H%MZ)
+          git push -q -f https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git data
+
+      - name: Guardar el libro para la hora siguiente
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: estado
+          key: libro-${{ github.run_id }}
