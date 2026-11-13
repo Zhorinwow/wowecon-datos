@@ -1,9 +1,10 @@
 name: Recolectar subastas
 
-# Una recogida cada tres horas, sin depender del horario de GitHub: cada ejecución
-# espera 170 minutos (entorno «espera», sin ocupar ninguna máquina), recoge en medio
-# minuto y lanza la siguiente. El horario de abajo solo vuelve a arrancar la cadena
-# si alguna vez se rompe.
+# Una recogida cada hora o cada tres horas, sin depender del horario de GitHub: cada
+# ejecución espera en un entorno con temporizador (sin ocupar ninguna máquina), recoge
+# en medio minuto y lanza la siguiente. La variable WOWECON_ESPERA elige el ritmo:
+# «espera» = 170 minutos, «espera-1h» = 55 minutos. El horario de abajo solo vuelve a
+# arrancar la cadena si alguna vez se rompe.
 on:
   schedule:
     - cron: '34 */3 * * *'
@@ -20,7 +21,7 @@ concurrency:
 jobs:
   recolectar:
     runs-on: ubuntu-latest
-    environment: espera
+    environment: ${{ vars.WOWECON_ESPERA || 'espera' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
