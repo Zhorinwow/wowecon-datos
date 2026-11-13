@@ -2,7 +2,7 @@ name: Recolectar subastas
 
 on:
   schedule:
-    - cron: '34 * * * *'
+    - cron: '4,34 * * * *'
   workflow_dispatch:
 
 permissions:
